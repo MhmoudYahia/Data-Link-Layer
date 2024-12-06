@@ -1,0 +1,4 @@
+0000 Hello from Node0
+1010 Error Test Node0
+1001 Delayed Message Node0
+0001 Just a simple message

@@ -1,0 +1,4 @@
+0000 Hello from Node1
+0100 Lost Message Node1
+0011 Duplication with Delay Node1
+1110 Multiple Errors Node1

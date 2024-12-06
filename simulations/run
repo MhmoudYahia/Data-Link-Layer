@@ -1,0 +1,4 @@
+#!/bin/sh
+cd `dirname $0`
+../src/datalinklayernet -n .:../src $*
+# for shared lib, use: opp_run -l ../src/datalinklayernet -n .:../src $*
