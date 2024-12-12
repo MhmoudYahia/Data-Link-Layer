@@ -1,0 +1,50 @@
+At time [0.1], Node[0]: Introducing channel error with code =[0000]
+At time [0.1], Node[0]: Introducing channel error with code =[1010]
+At time [0.1], Node[0]: Introducing channel error with code =[1001]
+At time [0.1], Node[0]: Introducing channel error with code =[0001]
+At time [0.1], Node[0]: Sent frame with seq_num=[0] and payload=[$Hello from Node0$] and trailer=[68], Modified [-1], Lost [No], Duplicate [0], Delay [0]
+At time [0.1], Node[0]: Sent frame with seq_num=[1] and payload=[$Erroò Test Node0$] and trailer=[126], Modified [47], Lost [No], Duplicate [2.000000], Delay [0]
+At time [0.1], Node[0]: Sent frame with seq_num=[2] and payload=[$Delayed MessaGe Node0$] and trailer=[15], Modified [117], Lost [No], Duplicate [0], Delay [2.000000]
+At time [0.1], Node[0]: Sent frame with seq_num=[3] and payload=[$Just a simple message$] and trailer=[28], Modified [-1], Lost [No], Duplicate [0], Delay [2.000000]
+At time [0.1], Node[1]: Uploading payload=[Hello from Node0] and seq_num=[0] to the network layer
+At time [0.1], Node[1]: Uploading payload=[Erroò Test Node0] and seq_num=[1] to the network layer
+At time [0.1], Node[0]: Received ACK for SeqNum=0
+At time [0.1], Node[0]: Sent frame with seq_num=[1] and payload=[$Error Tmst Node0$] and trailer=[126], Modified [67], Lost [No], Duplicate [2.000000], Delay [0]
+At time [0.1], Node[0]: Sent frame with seq_num=[2] and payload=[$Delayed Mesóage Node0$] and trailer=[15], Modified [103], Lost [No], Duplicate [0], Delay [2.000000]
+At time [0.1], Node[0]: Sent frame with seq_num=[3] and payload=[$Just a simple message$] and trailer=[28], Modified [-1], Lost [No], Duplicate [0], Delay [2.000000]
+At time [0.1], Node[0]: Received ACK for SeqNum=1
+At time [0.1], Node[0]: Sent frame with seq_num=[2] and payload=[$Felayed Message Node0$] and trailer=[15], Modified [9], Lost [No], Duplicate [0], Delay [2.000000]
+At time [0.1], Node[0]: Sent frame with seq_num=[3] and payload=[$Just a simple message$] and trailer=[28], Modified [-1], Lost [No], Duplicate [0], Delay [2.000000]
+At time [0.1], Node[1]: Uploading payload=[Error Tmst Node0] and seq_num=[1] to the network layer
+At time [0.1], Node[0]: Received ACK for SeqNum=1
+At time [0.1], Node[0]: Sent frame with seq_num=[2] and payload=[$DElayed Message Node0$] and trailer=[15], Modified [21], Lost [No], Duplicate [0], Delay [2.000000]
+At time [0.1], Node[0]: Sent frame with seq_num=[3] and payload=[$Just a simple message$] and trailer=[28], Modified [-1], Lost [No], Duplicate [0], Delay [2.000000]
+At time [2.1], Node[1]: Uploading payload=[Erroò Test Node0] and seq_num=[1] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Delayed MessaGe Node0] and seq_num=[2] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Just a simple message] and seq_num=[3] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Error Tmst Node0] and seq_num=[1] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Delayed Mesóage Node0] and seq_num=[2] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Just a simple message] and seq_num=[3] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Felayed Message Node0] and seq_num=[2] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Just a simple message] and seq_num=[3] to the network layer
+At time [2.1], Node[1]: Uploading payload=[DElayed Message Node0] and seq_num=[2] to the network layer
+At time [2.1], Node[1]: Uploading payload=[Just a simple message] and seq_num=[3] to the network layer
+At time [2.1], Node[0]: Received ACK for SeqNum=1
+At time [2.1], Node[0]: Sent frame with seq_num=[2] and payload=[$Delqyed Message Node0$] and trailer=[15], Modified [36], Lost [No], Duplicate [0], Delay [2.000000]
+At time [2.1], Node[0]: Sent frame with seq_num=[3] and payload=[$Just a simple message$] and trailer=[28], Modified [-1], Lost [No], Duplicate [0], Delay [2.000000]
+At time [2.1], Node[0]: Received ACK for SeqNum=2
+At time [2.1], Node[0]: Sent frame with seq_num=[3] and payload=[$Just a simple message$] and trailer=[28], Modified [-1], Lost [No], Duplicate [0], Delay [2.000000]
+At time [2.1], Node[0]: Received ACK for SeqNum=3
+At time [2.1], Node[0]: Received ACK for SeqNum=1
+At time [2.1], Node[0]: Received ACK for SeqNum=2
+At time [2.1], Node[0]: Received ACK for SeqNum=3
+At time [2.1], Node[0]: Received ACK for SeqNum=2
+At time [2.1], Node[0]: Received ACK for SeqNum=3
+At time [2.1], Node[0]: Received ACK for SeqNum=2
+At time [2.1], Node[0]: Received ACK for SeqNum=3
+At time [4.1], Node[1]: Uploading payload=[Delqyed Message Node0] and seq_num=[2] to the network layer
+At time [4.1], Node[1]: Uploading payload=[Just a simple message] and seq_num=[3] to the network layer
+At time [4.1], Node[1]: Uploading payload=[Just a simple message] and seq_num=[3] to the network layer
+At time [4.1], Node[0]: Received ACK for SeqNum=2
+At time [4.1], Node[0]: Received ACK for SeqNum=3
+At time [4.1], Node[0]: Received ACK for SeqNum=3

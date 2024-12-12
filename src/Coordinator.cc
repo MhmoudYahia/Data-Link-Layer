@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
-
+#include "omnetpp.h"  // Required for simtime_t
 #include "Coordinator.h"
 #include <fstream>      // For file input/output
 
@@ -32,20 +32,27 @@ void Coordinator::initialize()
 
            // Read starting node ID and start time
 
-           double startTime;
-           file >> nodeId >> startTime;
+           std::string startTimeStr;
+           file >> nodeId >> startTimeStr;
            file.close();
-           EV<< nodeId <<"------"<< startTime;
+
+           // Convert startTimeStr to simtime_t
+           simtime_t startTime = SimTime::parse(startTimeStr.c_str());
+
+           EV << "Start Time (simtime_t): " << startTime << "s\n";
            // Send start signal to the chosen node
            cMessage *startMsg = new cMessage("StartTransmission");
-           scheduleAt(simTime()+ startTime , startMsg);
+           scheduleAt(simTime() + 0.1 , startMsg);
            EV << "Coordinator initialized. Node " << nodeId << " will start at " << startTime << "s.\n";
+           EV << "Scheduling start message at: " << simTime() + startTime << "s.\n";
+
 }
 
 void Coordinator::handleMessage(cMessage *msg)
 {
     if(msg->isSelfMessage())
         {
+            EV << "Sending message from Coordinator to node " << nodeId << ".\n";
             send(msg, "out", nodeId);
         }
 
