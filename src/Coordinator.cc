@@ -50,6 +50,7 @@ void Coordinator::initialize()
 
 void Coordinator::handleMessage(cMessage *msg)
 {
+    EV<<"------------";
     if(msg->isSelfMessage())
         {
             EV << "Sending message from Coordinator to node " << nodeId << ".\n";

@@ -28,24 +28,43 @@ class Node : public cSimpleModule
 {
 private:
     std::vector<std::string> messages;
-    int seqNum = 0;        // Current sequence number
-    int windowSize;        // Sliding window size
-    int timeoutInterval;   // Timeout interval in seconds
+    int seqNum = 0;      // Current sequence number
+    int windowSize;      // Sliding window size
+    double timeoutInterval; // Timeout interval in seconds
+    double processingTime;
+    double transmissionDelay;
+    double errorDelay; 
+    double duplicationDelay;
+    double lossProb;
+    int maxSeqNumber; // Maximum sequence number
     std::ofstream logFile; // Log file
+
+    std::vector<std::string> senderWindow; // Buffer for sender window
+    std::vector<bool> ackReceived;         // Track received ACKs
+    std::vector<cMessage *> timers;        // Timers for frames
+    int nextFrameToSend;                   // Next frame to send
+    int expectedFrameToReceive;            // Expected frame at receiver
+    int totalFramesAccepted;               // Counter for accepted frames
+    simtime_t lastFrameTime;               // Time of last accepted frame
+
+    // Constants
+    static const int FRAME_DATA = 2;
+    static const int FRAME_ACK = 1;
+    static const int FRAME_NACK = 0;
 
     void sendFrames();
     void handleAck(cMessage *msg);
-    void retransmitFrames();
     void receiveFrame(cMessage *msg);
     void readFile(const char *filename);
     // Error simulation and utilities
     std::string byteStuff(const std::string &payload);
     std::string byteUnstuff(const std::string &framed);
-    std::string computeCRC(const std::string &data);
-    bool checkCRC(const std::string &data, const std::string &crc);
+    char computeCRC(const std::string &data);
+    bool checkCRC(const std::string &data, char crc);
     void simulateErrors(CustomMessage *frame, const std::string &errorCode, int i);
     void logEvent(const std::string &event);
     char calculateParity(const std::string &payload);
+    void handleTimeout(int seqNum);
 
 protected:
     virtual void initialize() override;
