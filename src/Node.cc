@@ -131,7 +131,7 @@ void Node::sendFrames()
 {
     if (currentIndex < messages.size() &&
         currentIndex < baseIndex + windowSize &&
-        !ackReceived[currentIndex % windowSize])
+        !ackReceived[currentIndex % maxSeqNumber])
     {
         std::string message = messages[currentIndex];
 
@@ -141,7 +141,7 @@ void Node::sendFrames()
         char crc = computeCRC(framedPayload);
 
         CustomMessage *frame = new CustomMessage("DataFrame");
-        frame->setM_Header(currentIndex % windowSize); // TODO: Check if this is correct
+        frame->setM_Header(currentIndex % maxSeqNumber); // TODO: Check if this is correct
         frame->setM_Payload(framedPayload.c_str());
         frame->setM_Trailer(crc);
         frame->setM_Type(FRAME_DATA);
@@ -157,7 +157,7 @@ void Node::sendFrames()
         simulateErrors(frame, errorCode, 0);
 
         // Update window state
-        senderWindow[currentIndex % windowSize] = payload;
+        senderWindow[currentIndex % maxSeqNumber] = payload;
         currentIndex++;
 
         // Schedule next frame after processing delay
@@ -335,23 +335,23 @@ void Node::receiveFrame(cMessage *msg)
         if (checkCRC(payload, crc))
         {
             // Buffer the frame
-            receiverBuffer[rcvSeqNum % windowSize] = byteUnstuff(payload);
-            frameReceived[rcvSeqNum % windowSize] = true; // Mark frame as received
+            receiverBuffer[rcvSeqNum % maxSeqNumber] = byteUnstuff(payload);
+            frameReceived[rcvSeqNum % maxSeqNumber] = true; // Mark frame as received
 
             // If it's the expected frame
             int highestConsecutive = expectedFrameToReceive;
 
-            while (frameReceived[highestConsecutive % windowSize])
+            while (frameReceived[highestConsecutive % maxSeqNumber])
             {
                 // Process and deliver to network layer
                 logEvent("Uploading payload=[" +
-                         receiverBuffer[highestConsecutive % windowSize] +
+                         receiverBuffer[highestConsecutive % maxSeqNumber] +
                          "] and seq_num=[" + std::to_string(highestConsecutive) +
                          "] to the network layer");
 
                 // Clear buffer and mark as unreceived
-                receiverBuffer[highestConsecutive % windowSize] = "";
-                frameReceived[highestConsecutive % windowSize] = false;
+                receiverBuffer[highestConsecutive % maxSeqNumber] = "";
+                frameReceived[highestConsecutive % maxSeqNumber] = false;
                 highestConsecutive++;
             }
 
