@@ -1,0 +1,44 @@
+version 3
+run General-0-20241221-21:19:23-20460
+attr configname General
+attr datetime 20241221-21:19:23
+attr datetimef 20241221-211923
+attr experiment General
+attr inifile omnetpp.ini
+attr iterationvars ""
+attr iterationvarsd ""
+attr iterationvarsf ""
+attr measurement ""
+attr network datalinklayernet.DataLinkLayerNet
+attr processid 20460
+attr repetition 0
+attr replication #0
+attr resultdir results
+attr runnumber 0
+attr seedset 0
+config network datalinklayernet.DataLinkLayerNet
+config *.coordinator.inputFile "\"coordinator.txt\""
+config **.windowSize 4
+config **.maxSeqNumber 7
+config **.timeoutInterval 10
+config **.processingTime 0.5
+config **.transmissionDelay 1.0
+config **.errorDelay 4.0
+config **.duplicationDelay 0.1
+config **.lossProb 0
+config debug-on-errors true
+
+par DataLinkLayerNet.coordinator typename "\"datalinklayernet.Coordinator\""
+par DataLinkLayerNet.coordinator inputFile "\"coordinator.txt\""
+par DataLinkLayerNet.nodes[0] typename "\"datalinklayernet.Node\""
+par DataLinkLayerNet.nodes[0] windowSize 4
+par DataLinkLayerNet.nodes[0] timeoutInterval 10
+par DataLinkLayerNet.nodes[0] errorDelay 2
+par DataLinkLayerNet.nodes[0] duplicationDelay 2
+par DataLinkLayerNet.nodes[1] typename "\"datalinklayernet.Node\""
+par DataLinkLayerNet.nodes[1] windowSize 4
+par DataLinkLayerNet.nodes[1] timeoutInterval 10
+par DataLinkLayerNet.nodes[1] errorDelay 2
+par DataLinkLayerNet.nodes[1] duplicationDelay 2
+par DataLinkLayerNet typename "\"datalinklayernet.DataLinkLayerNet\""
+

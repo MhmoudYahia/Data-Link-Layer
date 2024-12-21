@@ -45,25 +45,30 @@ void Node::readFile(const char *filename)
 
 void Node::initialize()
 {
+
     // Get parameters from ini file
     windowSize = par("windowSize").intValue();
     maxSeqNumber = 7;        // par("maxSeqNumber").intValue();
     timeoutInterval = 10;    // par("timeoutInterval").doubleValue();
     processingTime = 0.5;    // par("processingTime").doubleValue();
     transmissionDelay = 1.0; // par("transmissionDelay").doubleValue();
-    errorDelay = 0.4;        // par("errorDelay").doubleValue();
+    errorDelay = 4;          // par("errorDelay").doubleValue();
     duplicationDelay = 0.1;  // par("duplicationDelay").doubleValue();
     lossProb = 0;            // par("lossProb").doubleValue();
 
-    // Initialize window tracking
-    senderWindow.resize(windowSize);
-    ackReceived.resize(windowSize, false);
     timers.resize(windowSize, nullptr);
 
     nextFrameToSend = 0;
     expectedFrameToReceive = 0;
     totalFramesAccepted = 0;
     lastFrameTime = 0;
+
+    baseIndex = 0;
+    currentIndex = 0;
+    senderWindow.resize(windowSize);
+    ackReceived.resize(windowSize, false);
+    frameReceived.resize(windowSize, false);
+    receiverBuffer.resize(windowSize);
 }
 
 void Node::handleMessage(cMessage *msg)
@@ -79,11 +84,19 @@ void Node::handleMessage(cMessage *msg)
     }
     else if (msg->isSelfMessage())
     {
-        // Processing delay or timeout
-        if (strcmp(msg->getName(), "ProcessingDelay") == 0)
+        if (strcmp(msg->getName(), "SendNextFrame") == 0)
         {
-            delete msg;
+            // send next frame
             sendFrames();
+            delete msg;
+        }
+        else if (strcmp(msg->getName(), "Print") == 0)
+        {
+
+            std::string taher = prints.front();
+            prints.pop();
+            EV << "Taher: " << taher << endl;
+            logEvent(taher);
         }
         else
         {
@@ -116,38 +129,41 @@ void Node::handleMessage(cMessage *msg)
 
 void Node::sendFrames()
 {
-    for (int i = 0; i < windowSize && nextFrameToSend < messages.size(); i++)
+    if (currentIndex < messages.size() &&
+        currentIndex < baseIndex + windowSize &&
+        !ackReceived[currentIndex % windowSize])
     {
-        if (!ackReceived[i])
+        std::string message = messages[currentIndex];
+
+        std::string payload = message.substr(5); // Skip error code
+        std::string errorCode = message.substr(0, 4);
+        std::string framedPayload = byteStuff(payload);
+        char crc = computeCRC(framedPayload);
+
+        CustomMessage *frame = new CustomMessage("DataFrame");
+        frame->setM_Header(currentIndex % windowSize); // TODO: Check if this is correct
+        frame->setM_Payload(framedPayload.c_str());
+        frame->setM_Trailer(crc);
+        frame->setM_Type(FRAME_DATA);
+
+        logEvent("Introducing channel error with code =[" + errorCode + "]");
+        // Set timer
+        // if (timers[i] == nullptr)
+        // {
+        //     timers[i] = new cMessage(std::to_string(nextFrameToSend % windowSize).c_str());
+        //     scheduleAt(simTime() + timeoutInterval, timers[i]);
+        // }
+
+        simulateErrors(frame, errorCode, 0);
+
+        // Update window state
+        senderWindow[currentIndex % windowSize] = payload;
+        currentIndex++;
+
+        // Schedule next frame after processing delay
+        if (currentIndex < messages.size())
         {
-            std::string message = messages[nextFrameToSend];
-            std::string payload = message.substr(5); // Skip error code
-            std::string errorCode = message.substr(0, 4);
-            std::string framedPayload = byteStuff(payload);
-            char crc = computeCRC(framedPayload);
-
-            logEvent("Introducing channel error with code =[" + errorCode + "]");
-
-            CustomMessage *frame = new CustomMessage("DataFrame");
-            frame->setM_Header(nextFrameToSend % windowSize);
-            frame->setM_Payload(framedPayload.c_str());
-            frame->setM_Trailer(crc);
-            frame->setM_Type(FRAME_DATA);
-
-            // Set timer
-            if (timers[i] == nullptr)
-            {
-                timers[i] = new cMessage(std::to_string(nextFrameToSend % windowSize).c_str());
-                scheduleAt(simTime() + timeoutInterval, timers[i]);
-            }
-
-            simulateErrors(frame, errorCode, i);
-
-            senderWindow[i] = payload;
-            nextFrameToSend++;
-
-            // Add processing delay between frames
-            scheduleAt(simTime() + processingTime, new cMessage("ProcessingDelay"));
+            scheduleAt(simTime() + processingTime, new cMessage("SendNextFrame"));
         }
     }
 }
@@ -156,116 +172,225 @@ void Node::handleAck(cMessage *msg)
 {
     CustomMessage *ackMsg = check_and_cast<CustomMessage *>(msg);
     int ackNum = ackMsg->getM_Header();
-    bool isNack = (ackMsg->getM_Type() == FRAME_NACK);
-    bool lost = false;
 
-    if (isNack)
+    if (ackMsg->getM_Type() == FRAME_NACK)
     {
-
-        // Cancel existing timer
-        if (timers[ackNum % windowSize])
+        if (ackNum >= baseIndex && ackNum < currentIndex)
         {
-            cancelEvent(timers[ackNum % windowSize]);
-            delete timers[ackNum % windowSize];
-            timers[ackNum % windowSize] = nullptr;
+            // Cancel existing timer
+            if (timers[ackNum % maxSeqNumber])
+            {
+                cancelEvent(timers[ackNum % maxSeqNumber]);
+                delete timers[ackNum % maxSeqNumber];
+                timers[ackNum % maxSeqNumber] = nullptr;
+            }
+
+            // Retransmit frame
+            std::string framedPayload = byteStuff(senderWindow[ackNum % windowSize]);
+            CustomMessage *retransFrame = new CustomMessage("RetransFrame");
+            retransFrame->setM_Header(ackNum);
+            retransFrame->setM_Payload(framedPayload.c_str());
+            retransFrame->setM_Trailer(computeCRC(framedPayload));
+            retransFrame->setM_Type(FRAME_DATA);
+
+            sendDelayed(retransFrame, processingTime + transmissionDelay, "out");
+
+            // Set new timer
+            timers[ackNum % maxSeqNumber] = new cMessage(std::to_string(ackNum).c_str());
+            scheduleAt(simTime() + timeoutInterval, timers[ackNum % maxSeqNumber]);
         }
-
-        // Schedule retransmission after processing time + 0.001
-        CustomMessage *retransFrame = new CustomMessage("RetransFrame");
-        retransFrame->setM_Header(ackNum);
-        std::string framedPayload = byteStuff(senderWindow[ackNum % windowSize]);
-        retransFrame->setM_Payload(framedPayload.c_str());
-        retransFrame->setM_Type(FRAME_DATA);
-
-        char crc = computeCRC(framedPayload);
-        retransFrame->setM_Trailer(crc);
-
-        // Send error-free after delay
-        sendDelayed(retransFrame, processingTime + transmissionDelay, "out");
-
-        // Set new timer
-        timers[ackNum % windowSize] = new cMessage(std::to_string(ackNum).c_str());
-        scheduleAt(simTime() + timeoutInterval, timers[ackNum % windowSize]);
     }
     else
     {
-        // Handle cumulative ACKs
-        for (int i = seqNum; i <= ackNum; i++)
+        // Process cumulative ACK
+        if (ackNum >= baseIndex)
         {
-            if (!ackReceived[i % windowSize])
+            // Clear all frames up to ackNum
+            for (int i = baseIndex; i <= ackNum; i++)
             {
-                ackReceived[i % windowSize] = true;
-                if (timers[i % windowSize])
+                if (timers[i % maxSeqNumber])
                 {
-                    cancelEvent(timers[i % windowSize]);
-                    delete timers[i % windowSize];
-                    timers[i % windowSize] = nullptr;
+                    cancelEvent(timers[i % maxSeqNumber]);
+                    delete timers[i % maxSeqNumber];
+                    timers[i % maxSeqNumber] = nullptr;
                 }
+                ackReceived[i % windowSize] = false;
+                senderWindow[i % windowSize].clear();
             }
-        }
 
-        // Slide window
-        while (!senderWindow.empty() && ackReceived[seqNum % windowSize])
-        {
-            ackReceived[seqNum % windowSize] = false;
-            senderWindow[seqNum % windowSize].clear();
-            seqNum++;
-        }
+            // Slide window
+            baseIndex = ackNum + 1;
 
-        // Try sending new frames
-        sendFrames();
+            // Try sending new frames
+            scheduleAt(simTime() + processingTime, new cMessage("SendNextFrame"));
+        }
     }
-    delete ackMsg;
+    delete msg;
 }
+
+// void Node::receiveFrame(cMessage *msg)
+// {
+//     CustomMessage *frame = check_and_cast<CustomMessage *>(msg);
+//     int rcvSeqNum = frame->getM_Header();
+//     std::string payload = frame->getM_Payload();
+//     char crc = frame->getM_Trailer();
+
+//     bool isCorerctSeqnum = false;
+
+//     for (size_t i = 0; i < windowSize; i++)
+//     {
+//         if (rcvSeqNum == (baseIndex + i) % (maxSeqNumber + 1))
+//         {
+//             isCorerctSeqnum = true;
+//             break;
+//         }
+//     }
+
+//     // Check if frame is within window bounds
+//     if (isCorerctSeqnum)
+//     {
+//         // Check CRC
+//         if (checkCRC(payload, crc))
+//         {
+//             // Buffer the frame
+//             receiverBuffer[maxSeqNumber + 1] = byteUnstuff(payload);
+//             frameReceived[maxSeqNumber + 1] = true; // Mark frame as received
+
+//             int temp = baseIndex;
+//             while (frameReceived[baseIndex])
+//             {
+//                 // Process and deliver to network layer
+//                 logEvent("Uploading payload=[" +
+//                          receiverBuffer[baseIndex] +
+//                          "] and seq_num=[" + std::to_string(baseIndex) +
+//                          "] to the network layer");
+
+//                 // Clear buffer and mark as unreceived
+//                 receiverBuffer[baseIndex] = "";
+//                 frameReceived[baseIndex] = false;
+//                 baseIndex++;
+//             }
+
+//             // Send cumulative ACK for highest consecutive frame
+//             if (baseIndex != temp)
+//             {
+//                 CustomMessage *ack = new CustomMessage("ACK");
+//                 ack->setM_Header(baseIndex); // ACK all frames up to this
+//                 ack->setM_Type(FRAME_ACK);
+//                 sendDelayed(ack, processingTime + transmissionDelay, "out");
+
+//                 logEvent("Sending [ACK] with number [" +
+//                          std::to_string(baseIndex - 1) +
+//                          "], loss[No] ");
+
+//                 expectedFrameToReceive = baseIndex;
+//             }
+//         }
+//         else
+//         {
+//             EV << "Invalid CRC\n";
+//             // Invalid CRC
+//             if (rcvSeqNum == expectedFrameToReceive)
+//             {
+//                 // Send NACK for expected frame
+//                 CustomMessage *nack = new CustomMessage("NACK");
+//                 nack->setM_Header(rcvSeqNum);
+//                 nack->setM_Type(FRAME_NACK);
+//                 sendDelayed(nack, processingTime + transmissionDelay, "out");
+
+//                 logEvent("Sending [NACK] with number [" +
+//                          std::to_string(rcvSeqNum) +
+//                          "], loss[No] ");
+//             }
+//             // Else: Silent discard for out-of-sequence corrupt frames
+//         }
+//     }
+//     // Else: Frame outside window - silently discard
+
+//     delete msg;
+// }
 
 void Node::receiveFrame(cMessage *msg)
 {
-    CustomMessage *dataMsg = check_and_cast<CustomMessage *>(msg);
-    int seqNum = dataMsg->getM_Header();
-    std::string payload = dataMsg->getM_Payload();
-    char crc = dataMsg->getM_Trailer();
+    CustomMessage *frame = check_and_cast<CustomMessage *>(msg);
+    int rcvSeqNum = frame->getM_Header();
+    std::string payload = frame->getM_Payload();
+    char crc = frame->getM_Trailer();
 
-    if (checkCRC(payload, crc))
+    bool isCorerctSeqnum = false;
+
+    for (size_t i = 0; i < windowSize; i++)
     {
-        if (seqNum == expectedFrameToReceive)
+        if (rcvSeqNum == (baseIndex + i) % (maxSeqNumber + 1))
         {
-            std::string originalPayload = byteUnstuff(payload);
-            logEvent("Uploading payload=[" + originalPayload + "] and seq_num=[" +
-                     std::to_string(seqNum) + "] to the network layer");
-
-            totalFramesAccepted++;
-            lastFrameTime = simTime();
-            expectedFrameToReceive = (expectedFrameToReceive + 1) % windowSize;
-
-            // Send ACK
-            CustomMessage *ack = new CustomMessage("ACK");
-            ack->setM_Header(seqNum);
-            ack->setM_Type(FRAME_ACK);
-            sendDelayed(ack, processingTime, "out");
-
-            bool lost = false;
-            logEvent("Sending [ACK] with number [" + std::to_string(seqNum) +
-                     "], loss[" + (lost ? "Yes" : "No") + "] ");
+            isCorerctSeqnum = true;
+            break;
         }
     }
-    else
+    // Check if frame is within window bounds
+    if (isCorerctSeqnum)
     {
-
-        EV << ("CRC error detected for frame " + std::to_string(seqNum));
-
-        // Send NACK for in-order frames only
-        if (seqNum == expectedFrameToReceive)
+        EV << "-------------------------------------------------------\n";
+        // Check CRC
+        if (checkCRC(payload, crc))
         {
-            CustomMessage *nack = new CustomMessage("NACK");
-            nack->setM_Header(seqNum);
-            nack->setM_Type(FRAME_NACK);
-            send(nack, "out");
+            // Buffer the frame
+            receiverBuffer[rcvSeqNum % windowSize] = byteUnstuff(payload);
+            frameReceived[rcvSeqNum % windowSize] = true; // Mark frame as received
 
-            bool lost = false;
-            logEvent("Sending [NACK] with number [" + std::to_string(seqNum) +
-                     "], loss[" + (lost ? "Yes" : "No") + "] ");
+            // If it's the expected frame
+            int highestConsecutive = expectedFrameToReceive;
+
+            while (frameReceived[highestConsecutive % windowSize])
+            {
+                // Process and deliver to network layer
+                logEvent("Uploading payload=[" +
+                         receiverBuffer[highestConsecutive % windowSize] +
+                         "] and seq_num=[" + std::to_string(highestConsecutive) +
+                         "] to the network layer");
+
+                // Clear buffer and mark as unreceived
+                receiverBuffer[highestConsecutive % windowSize] = "";
+                frameReceived[highestConsecutive % windowSize] = false;
+                highestConsecutive++;
+            }
+
+            // Send cumulative ACK for highest consecutive frame
+            if (highestConsecutive > expectedFrameToReceive)
+            {
+                CustomMessage *ack = new CustomMessage("ACK");
+                ack->setM_Header(highestConsecutive); // ACK all frames up to this
+                ack->setM_Type(FRAME_ACK);
+                sendDelayed(ack, processingTime + transmissionDelay, "out");
+
+                logEvent("Sending [ACK] with number [" +
+                         std::to_string(highestConsecutive) +
+                         "], loss[No] ");
+
+                expectedFrameToReceive = highestConsecutive;
+            }
+        }
+        else
+        {
+            EV << "Invalid CRC\n";
+            // Invalid CRC
+            if (rcvSeqNum == expectedFrameToReceive)
+            {
+                // Send NACK for expected frame
+                CustomMessage *nack = new CustomMessage("NACK");
+                nack->setM_Header(rcvSeqNum);
+                nack->setM_Type(FRAME_NACK);
+                sendDelayed(nack, processingTime + transmissionDelay, "out");
+
+                logEvent("Sending [NACK] with number [" +
+                         std::to_string(rcvSeqNum) +
+                         "], loss[No] ");
+            }
+            // Else: Silent discard for out-of-sequence corrupt frames
         }
     }
+    // Else: Frame outside window - silently discard
+
     delete msg;
 }
 
@@ -354,79 +479,271 @@ void Node::handleTimeout(int seqNum)
 void Node::simulateErrors(CustomMessage *frame, const std::string &errorCode, int i)
 {
     std::string payload = frame->getM_Payload();
+
     char trailer = frame->getM_Trailer();
     char seqNum = frame->getM_Header();
     bool modified = false;
-    bool isLost = false;
-    bool isDuplicated = false;
-    bool isDelayed = false;
-    double duplicationDelay = 0;
     int bitPosition = 0;
-    double delay = 0;
+    std::string state = "";
+    // Case "0000": No error
+    if (errorCode == "0000")
+    {
+        sendDelayed(frame, processingTime + transmissionDelay, "out");
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [-1], Lost [No], Duplicate [0], Delay [0]";
 
-    // Bit Modification (1xxx)
-    if (errorCode[0] == '1')
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+    }
+    // Case "0001": Delay only
+    else if (errorCode == "0001")
+    {
+        sendDelayed(frame, processingTime + transmissionDelay + errorDelay, "out");
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [-1], Lost [No], Duplicate [0], Delay [" + std::to_string(errorDelay) + "]";
+
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+    }
+    // Case "0010": Duplication without delay
+    else if (errorCode == "0010")
+    {
+        CustomMessage *duplicate = frame->dup();
+        sendDelayed(frame, processingTime + transmissionDelay, "out");
+        sendDelayed(duplicate, processingTime + transmissionDelay + duplicationDelay, "out");
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [-1], Lost [No], Duplicate [1], Delay [0]";
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+
+        std::string state2 = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                             "] and payload=[" + payload +
+                             "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                             "] , Modified [-1], Lost [No], Duplicate [2], Delay [0]";
+
+        prints.push(state2);
+        scheduleAt(simTime() + processingTime + duplicationDelay, new cMessage("Print"));
+    }
+    // Case "0011": Duplication with delay
+    else if (errorCode == "0011")
+    {
+        CustomMessage *duplicate = frame->dup();
+        sendDelayed(frame, processingTime + transmissionDelay + errorDelay, "out");
+        sendDelayed(duplicate, processingTime + transmissionDelay + errorDelay + duplicationDelay, "out");
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [-1], Lost [No], Duplicate [1], Delay [" + std::to_string(errorDelay) + "]";
+
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+
+        std::string state2 = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                             "] and payload=[" + payload +
+                             "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                             "] , Modified [-1], Lost [No], Duplicate [2], Delay [" + std::to_string(errorDelay) + "]";
+
+        prints.push(state2);
+        scheduleAt(simTime() + processingTime + duplicationDelay, new cMessage("Print"));
+    }
+    // Case "1100": Loss with modification
+    else if (errorCode == "1100")
     {
         bitPosition = rand() % (payload.length() * 8);
         char &byte = payload[bitPosition / 8];
         byte ^= (1 << (bitPosition % 8));
         modified = true;
 
-        frame->setM_Payload(payload.c_str());
-        if (timers[i] == nullptr)
-        {
-            timers[i] = new cMessage(std::to_string(frame->getM_Header()).c_str());
-            scheduleAt(simTime() + timeoutInterval, timers[i]);
-        }
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [" + std::to_string(bitPosition) +
+                "], Lost [Yes], Duplicate [1], Delay [0]";
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
 
-        EV << ("Frame " + std::to_string(frame->getM_Header()) + " modified at bit " + std::to_string(bitPosition));
-    }
-
-    // Loss (x1xx)
-    if (errorCode[1] == '1')
-    {
-        isLost = true;
-        EV << ("Frame " + std::to_string(frame->getM_Header()) + " lost");
         delete frame;
         return;
     }
-
-    // Duplication (xx1x)
-    if (errorCode[2] == '1')
+    // Case "1101": Loss with modification and delay
+    else if (errorCode == "1101")
     {
-        isDuplicated = true;
-        // duplicationDelay = 0.1; // 100ms delay for duplicate
-        CustomMessage *duplicate = frame->dup();
-        EV << ("Frame " + std::to_string(frame->getM_Header()) + " duplicated");
-        sendDelayed(duplicate, simTime() + duplicationDelay, "out");
-    }
+        bitPosition = rand() % (payload.length() * 8);
+        char &byte = payload[bitPosition / 8];
+        byte ^= (1 << (bitPosition % 8));
+        modified = true;
 
-    // Delay (xxx1)
-    if (errorCode[3] == '1')
-    {
-        isDelayed = true;
-        // delay = 0.2; // 200ms delay
-        EV << ("Frame " + std::to_string(frame->getM_Header()) + " delayed");
-        sendDelayed(frame, simTime() + errorDelay, "out");
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] ,Modified [" + std::to_string(bitPosition) +
+                "], Lost [Yes], Duplicate [0], Delay [" + std::to_string(errorDelay) + "]";
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+        delete frame;
         return;
     }
-
-    // Send frame if not lost or delayed
-    if (!isLost && !isDelayed)
+    // Case "1110": Loss with modification and duplication
+    else if (errorCode == "1110")
     {
-        send(frame, "out");
+        bitPosition = rand() % (payload.length() * 8);
+        char &byte = payload[bitPosition / 8];
+        byte ^= (1 << (bitPosition % 8));
+        modified = true;
+
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [" + std::to_string(bitPosition) +
+                "], Lost [Yes], Duplicate [1], Delay [0]";
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+
+        std::string state2 = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                             "] and payload=[" + payload +
+                             "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                             "] , Modified [" + std::to_string(bitPosition) +
+                             "], Lost [Yes], Duplicate [2], Delay [0]";
+
+        prints.push(state2);
+        scheduleAt(simTime() + processingTime + duplicationDelay, new cMessage("Print"));
+
+        delete frame;
+        return;
     }
+    // Case "1111": Loss with modification, duplication and delay
+    else if (errorCode == "1111")
+    {
+        bitPosition = rand() % (payload.length() * 8);
+        char &byte = payload[bitPosition / 8];
+        byte ^= (1 << (bitPosition % 8));
+        modified = true;
 
-    std::string state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
-                        "] and payload=[" + payload +
-                        "] and trailer=[" + std::bitset<8>(trailer).to_string() +
-                        "] , Modified [" + (modified ? std::to_string(bitPosition) : "-1") +
-                        "] , Lost [" + (isLost ? "Yes" : "No") +
-                        "], Duplicate [" + (isDuplicated ? "1" : "0") +
-                        "], Delay [" + (isDelayed ? std::to_string(errorDelay) : "0") + "]";
-    logEvent(state);
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [" + std::to_string(bitPosition) +
+                "], Lost [Yes], Duplicate [1], Delay [" + std::to_string(errorDelay) + "]";
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+
+        std::string state2 = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                             "] and payload=[" + payload +
+                             "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                             "] , Modified [" + std::to_string(bitPosition) +
+                             "], Lost [Yes], Duplicate [2], Delay [" + std::to_string(errorDelay) + "]";
+
+        prints.push(state2);
+        scheduleAt(simTime() + processingTime + duplicationDelay, new cMessage("Print"));
+
+        delete frame;
+        return;
+    }
+    // Case "1000": Modification only
+    else if (errorCode == "1000")
+    {
+        bitPosition = rand() % (payload.length() * 8);
+        char &byte = payload[bitPosition / 8];
+        byte ^= (1 << (bitPosition % 8));
+        frame->setM_Payload(payload.c_str());
+        modified = true;
+        sendDelayed(frame, processingTime + transmissionDelay, "out");
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [" + std::to_string(bitPosition) +
+                "], Lost [No], Duplicate [0], Delay [0]";
+
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+    }
+    // Case "1001": Modification and delay
+    else if (errorCode == "1001")
+    {
+        bitPosition = rand() % (payload.length() * 8);
+        char &byte = payload[bitPosition / 8];
+        byte ^= (1 << (bitPosition % 8));
+        frame->setM_Payload(payload.c_str());
+        modified = true;
+        sendDelayed(frame, processingTime + transmissionDelay + errorDelay, "out");
+
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [" + std::to_string(bitPosition) +
+                "], Lost [No], Duplicate [0], Delay [" + std::to_string(errorDelay) + "]";
+
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+    }
+    // Case "1010": Modification and duplication
+    else if (errorCode == "1010")
+    {
+        bitPosition = rand() % (payload.length() * 8);
+        char &byte = payload[bitPosition / 8];
+        byte ^= (1 << (bitPosition % 8));
+        frame->setM_Payload(payload.c_str());
+        modified = true;
+        CustomMessage *duplicate = frame->dup();
+        sendDelayed(frame, processingTime + transmissionDelay, "out");
+        sendDelayed(duplicate, processingTime + transmissionDelay + duplicationDelay, "out");
+
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [" + std::to_string(bitPosition) +
+                "], Lost [No], Duplicate [1], Delay [0]";
+
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+
+        std::string state2 = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                             "] and payload=[" + payload +
+                             "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                             "] , Modified [" + std::to_string(bitPosition) +
+                             "], Lost [No], Duplicate [2], Delay [0]";
+
+        prints.push(state2);
+        scheduleAt(simTime() + processingTime + duplicationDelay, new cMessage("Print"));
+    }
+    // Case "1011": Modification, duplication and delay
+    else if (errorCode == "1011")
+    {
+        bitPosition = rand() % (payload.length() * 8);
+        char &byte = payload[bitPosition / 8];
+        byte ^= (1 << (bitPosition % 8));
+        frame->setM_Payload(payload.c_str());
+        modified = true;
+        CustomMessage *duplicate = frame->dup();
+        sendDelayed(frame, processingTime + transmissionDelay + errorDelay, "out");
+        sendDelayed(duplicate, processingTime + transmissionDelay + errorDelay + duplicationDelay, "out");
+
+        state = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                "] and payload=[" + payload +
+                "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                "] , Modified [" + std::to_string(bitPosition) +
+                "], Lost [No], Duplicate [1], Delay [" + std::to_string(errorDelay) + "]";
+
+        prints.push(state);
+        scheduleAt(simTime() + processingTime, new cMessage("Print"));
+
+        std::string state2 = "[sent] frame with seq_num=[" + std::to_string(seqNum) +
+                             "] and payload=[" + payload +
+                             "] and trailer=[" + std::bitset<8>(trailer).to_string() +
+                             "] , Modified [" + std::to_string(bitPosition) +
+                             "], Lost [No], Duplicate [2], Delay [" + std::to_string(errorDelay) + "]";
+
+        prints.push(state2);
+
+        scheduleAt(simTime() + processingTime + duplicationDelay, new cMessage("Print"));
+    }
 }
-
 char Node::calculateParity(const std::string &payload)
 {
     char parity = 0;
@@ -437,7 +754,7 @@ char Node::calculateParity(const std::string &payload)
     return parity;
 }
 
-void Node::logEvent(const std::string &event)
+void Node::logEvent(const std::string &event, int i)
 {
     std::ofstream logFile("output.txt", std::ios::app);
     if (!logFile.is_open())
@@ -446,7 +763,7 @@ void Node::logEvent(const std::string &event)
         return;
     }
 
-    logFile << "At time [" << simTime() << "], Node[" << getIndex()
+    logFile << "At time [" << simTime() + i << "], Node[" << getIndex()
             << "]: " << event << "\n";
 
     logFile.close();

@@ -18,6 +18,7 @@
 
 #include <omnetpp.h>
 #include <fstream> // For file input/output
+#include <queue>
 
 using namespace omnetpp;
 
@@ -28,24 +29,30 @@ class Node : public cSimpleModule
 {
 private:
     std::vector<std::string> messages;
-    int seqNum = 0;      // Current sequence number
-    int windowSize;      // Sliding window size
+    int seqNum = 0;         // Current sequence number
+    int windowSize;         // Sliding window size
     double timeoutInterval; // Timeout interval in seconds
     double processingTime;
     double transmissionDelay;
-    double errorDelay; 
+    double errorDelay;
     double duplicationDelay;
     double lossProb;
-    int maxSeqNumber; // Maximum sequence number
+    int maxSeqNumber;      // Maximum sequence number
     std::ofstream logFile; // Log file
 
-    std::vector<std::string> senderWindow; // Buffer for sender window
-    std::vector<bool> ackReceived;         // Track received ACKs
-    std::vector<cMessage *> timers;        // Timers for frames
-    int nextFrameToSend;                   // Next frame to send
-    int expectedFrameToReceive;            // Expected frame at receiver
-    int totalFramesAccepted;               // Counter for accepted frames
-    simtime_t lastFrameTime;               // Time of last accepted frame
+    std::queue<std::string> prints;
+
+    std::vector<std::string> senderWindow;   // Buffer for sender window
+    std::vector<bool> frameReceived;         // Track received frames
+    std::vector<std::string> receiverBuffer; // Buffer for receiver window
+    std::vector<bool> ackReceived;           // Track received ACKs
+    std::vector<cMessage *> timers;          // Timers for frames
+    int nextFrameToSend;                     // Next frame to send
+    int expectedFrameToReceive;              // Expected frame at receiver
+    int totalFramesAccepted;                 // Counter for accepted frames
+    int currentIndex;                        // Current index in sender window
+    int baseIndex;                           // Base index for sender window
+    simtime_t lastFrameTime;                 // Time of last accepted frame
 
     // Constants
     static const int FRAME_DATA = 2;
@@ -62,7 +69,7 @@ private:
     char computeCRC(const std::string &data);
     bool checkCRC(const std::string &data, char crc);
     void simulateErrors(CustomMessage *frame, const std::string &errorCode, int i);
-    void logEvent(const std::string &event);
+    void logEvent(const std::string &event, int i = 0);
     char calculateParity(const std::string &payload);
     void handleTimeout(int seqNum);
 
