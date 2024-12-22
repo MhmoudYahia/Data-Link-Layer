@@ -1,8 +1,8 @@
 version 3
-run General-0-20241221-21:19:23-20460
+run General-0-20241222-13:49:02-12116
 attr configname General
-attr datetime 20241221-21:19:23
-attr datetimef 20241221-211923
+attr datetime 20241222-13:49:02
+attr datetimef 20241222-134902
 attr experiment General
 attr inifile omnetpp.ini
 attr iterationvars ""
@@ -10,7 +10,7 @@ attr iterationvarsd ""
 attr iterationvarsf ""
 attr measurement ""
 attr network datalinklayernet.DataLinkLayerNet
-attr processid 20460
+attr processid 12116
 attr repetition 0
 attr replication #0
 attr resultdir results
@@ -33,12 +33,8 @@ par DataLinkLayerNet.coordinator inputFile "\"coordinator.txt\""
 par DataLinkLayerNet.nodes[0] typename "\"datalinklayernet.Node\""
 par DataLinkLayerNet.nodes[0] windowSize 4
 par DataLinkLayerNet.nodes[0] timeoutInterval 10
-par DataLinkLayerNet.nodes[0] errorDelay 2
-par DataLinkLayerNet.nodes[0] duplicationDelay 2
 par DataLinkLayerNet.nodes[1] typename "\"datalinklayernet.Node\""
 par DataLinkLayerNet.nodes[1] windowSize 4
 par DataLinkLayerNet.nodes[1] timeoutInterval 10
-par DataLinkLayerNet.nodes[1] errorDelay 2
-par DataLinkLayerNet.nodes[1] duplicationDelay 2
 par DataLinkLayerNet typename "\"datalinklayernet.DataLinkLayerNet\""
 

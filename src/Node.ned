@@ -23,8 +23,14 @@ simple Node
     parameters:
         int windowSize = 4;
         int timeoutInterval = 10;
-        double errorDelay = 2;
-        double duplicationDelay = 2;
+//        double errorDelay = 2;
+//        double duplicationDelay = 2;
+//        double errorDelay = 4;
+//        double duplicationDelay = 0.1;
+//        double lossProb = 1;
+//        double processingTime;
+//        double transmissionDelay;
+        
         @display("p=200,200");
     gates:
         input in[2];

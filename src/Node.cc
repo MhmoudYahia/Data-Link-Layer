@@ -45,9 +45,8 @@ void Node::readFile(const char *filename)
 
 void Node::initialize()
 {
-
     // Get parameters from ini file
-    windowSize = par("windowSize").intValue();
+    windowSize = 40;  //par("windowSize").intValue();
     maxSeqNumber = 7;        // par("maxSeqNumber").intValue();
     timeoutInterval = 10;    // par("timeoutInterval").doubleValue();
     processingTime = 0.5;    // par("processingTime").doubleValue();
@@ -56,7 +55,7 @@ void Node::initialize()
     duplicationDelay = 0.1;  // par("duplicationDelay").doubleValue();
     lossProb = 0;            // par("lossProb").doubleValue();
 
-    timers.resize(windowSize, nullptr);
+    timers.resize(maxSeqNumber, nullptr);
 
     nextFrameToSend = 0;
     expectedFrameToReceive = 0;
@@ -65,10 +64,10 @@ void Node::initialize()
 
     baseIndex = 0;
     currentIndex = 0;
-    senderWindow.resize(windowSize);
-    ackReceived.resize(windowSize, false);
-    frameReceived.resize(windowSize, false);
-    receiverBuffer.resize(windowSize);
+    senderWindow.resize(maxSeqNumber);
+    ackReceived.resize(maxSeqNumber, false);
+    frameReceived.resize(maxSeqNumber, false);
+    receiverBuffer.resize(maxSeqNumber);
 }
 
 void Node::handleMessage(cMessage *msg)
@@ -77,7 +76,7 @@ void Node::handleMessage(cMessage *msg)
     {
         // Initialize transmission
         int me = getIndex();
-        readFile(me == 0 ? "input3.txt" : "input3.txt");
+        readFile(me == 0 ? "input0.txt" : "input0.txt");
         EV << "Node " << me << " initialized with " << messages.size() << " messages.\n";
         sendFrames();
         delete msg;
@@ -93,10 +92,10 @@ void Node::handleMessage(cMessage *msg)
         else if (strcmp(msg->getName(), "Print") == 0)
         {
 
-            std::string taher = prints.front();
+            std::string str = prints.front();
             prints.pop();
-            EV << "Taher: " << taher << endl;
-            logEvent(taher);
+            EV << "str: " << str << endl;
+            logEvent(str);
         }
         else
         {
@@ -214,8 +213,8 @@ void Node::handleAck(cMessage *msg)
                     delete timers[i % maxSeqNumber];
                     timers[i % maxSeqNumber] = nullptr;
                 }
-                ackReceived[i % windowSize] = false;
-                senderWindow[i % windowSize].clear();
+                ackReceived[i % maxSeqNumber] = false;
+                senderWindow[i % maxSeqNumber].clear();
             }
 
             // Slide window
@@ -253,8 +252,8 @@ void Node::handleAck(cMessage *msg)
 //         if (checkCRC(payload, crc))
 //         {
 //             // Buffer the frame
-//             receiverBuffer[maxSeqNumber + 1] = byteUnstuff(payload);
-//             frameReceived[maxSeqNumber + 1] = true; // Mark frame as received
+//             receiverBuffer[baseIndex] = byteUnstuff(payload);
+//             frameReceived[baseIndex] = true; // Mark frame as received
 
 //             int temp = baseIndex;
 //             while (frameReceived[baseIndex])
@@ -279,9 +278,11 @@ void Node::handleAck(cMessage *msg)
 //                 ack->setM_Type(FRAME_ACK);
 //                 sendDelayed(ack, processingTime + transmissionDelay, "out");
 
-//                 logEvent("Sending [ACK] with number [" +
-//                          std::to_string(baseIndex - 1) +
-//                          "], loss[No] ");
+//                 prints.push("Sending [ACK] with number [" +
+//                             std::to_string(baseIndex) +
+//                             "], loss[No] ");
+
+//                 scheduleAt(simTime() + processingTime, new cMessage("Print"));
 
 //                 expectedFrameToReceive = baseIndex;
 //             }
@@ -298,9 +299,10 @@ void Node::handleAck(cMessage *msg)
 //                 nack->setM_Type(FRAME_NACK);
 //                 sendDelayed(nack, processingTime + transmissionDelay, "out");
 
-//                 logEvent("Sending [NACK] with number [" +
-//                          std::to_string(rcvSeqNum) +
-//                          "], loss[No] ");
+//                 prints.push("Sending [NACK] with number [" +
+//                             std::to_string(expectedFrameToReceive) +
+//                             "], loss[No] ");
+//                 scheduleAt(simTime() + processingTime, new cMessage("Print"));
 //             }
 //             // Else: Silent discard for out-of-sequence corrupt frames
 //         }
@@ -328,7 +330,7 @@ void Node::receiveFrame(cMessage *msg)
         }
     }
     // Check if frame is within window bounds
-    if (isCorerctSeqnum)
+    if (true)
     {
         EV << "-------------------------------------------------------\n";
         // Check CRC
@@ -363,9 +365,11 @@ void Node::receiveFrame(cMessage *msg)
                 ack->setM_Type(FRAME_ACK);
                 sendDelayed(ack, processingTime + transmissionDelay, "out");
 
-                logEvent("Sending [ACK] with number [" +
-                         std::to_string(highestConsecutive) +
-                         "], loss[No] ");
+                prints.push("Sending [ACK] with number [" +
+                            std::to_string(highestConsecutive) +
+                            "], loss[No] ");
+
+                scheduleAt(simTime() + processingTime, new cMessage("Print"));
 
                 expectedFrameToReceive = highestConsecutive;
             }
@@ -374,18 +378,20 @@ void Node::receiveFrame(cMessage *msg)
         {
             EV << "Invalid CRC\n";
             // Invalid CRC
-            if (rcvSeqNum == expectedFrameToReceive)
-            {
-                // Send NACK for expected frame
-                CustomMessage *nack = new CustomMessage("NACK");
-                nack->setM_Header(rcvSeqNum);
-                nack->setM_Type(FRAME_NACK);
-                sendDelayed(nack, processingTime + transmissionDelay, "out");
+            // if (rcvSeqNum == expectedFrameToReceive)
+            // {
+            // Send NACK for expected frame
+            CustomMessage *nack = new CustomMessage("NACK");
+            nack->setM_Header(rcvSeqNum);
+            nack->setM_Type(FRAME_NACK);
+            sendDelayed(nack, processingTime + transmissionDelay, "out");
 
-                logEvent("Sending [NACK] with number [" +
-                         std::to_string(rcvSeqNum) +
-                         "], loss[No] ");
-            }
+            prints.push("Sending [NACK] with number [" +
+                        std::to_string(rcvSeqNum) +
+                        "], loss[No] ");
+
+            scheduleAt(simTime() + processingTime, new cMessage("Print"));
+            // }
             // Else: Silent discard for out-of-sequence corrupt frames
         }
     }
@@ -765,6 +771,8 @@ void Node::logEvent(const std::string &event, int i)
 
     logFile << "At time [" << simTime() + i << "], Node[" << getIndex()
             << "]: " << event << "\n";
+
+
 
     logFile.close();
 }

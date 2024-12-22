@@ -1,4 +1,27 @@
-0000 Hello from Node0
-1010 Error Test Node0
-1001 Delayed Message Node0
-0001 Just a simple message
+0000 $He//llo$
+0000 Goodmorning1
+0000 Goodmorning2
+0000 Goodmorning3
+0000 Goodmorning4
+0100 Goodmorning5
+0000 Goodmorning6
+0000 Goodmorning7
+0000 Hi0
+0000 Hi1
+1000 Hi2
+0000 Hi3
+0001 Hi4
+0000 Hi5
+0000 Hi6
+0010 Hi7
+0000 Good0
+0000 Good1
+0000 Good2
+0000 Good3
+1100 Good4
+0100 Good5
+0100 Good6
+0100 Good7
+1001 Bye0
+0000 Bye1
+0000 Bye2
